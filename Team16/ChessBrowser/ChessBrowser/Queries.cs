@@ -229,9 +229,6 @@ namespace ChessBrowser
                         {
                             if (paraEntry.Value != null)
                             {
-                                Console.WriteLine("\nhere in the command");
-                                Console.WriteLine(paraEntry.Key);
-                                Console.WriteLine(paraEntry.Value);
                                 command.Parameters.AddWithValue(paraEntry.Key, paraEntry.Value);
                             }
                         }
