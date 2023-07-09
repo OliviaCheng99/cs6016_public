@@ -68,7 +68,8 @@ namespace ChessBrowser
 
                         // get table Events column eID and this is used in inserting into table Games
                         // UNIQUE KEY `Name` (`Name`,`Date`,`Site`)
-                        string getEIDQuery = "SELECT eID FROM Events WHERE Name = @Name AND Date = @Date AND Site = @Site";
+                        string getEIDQuery = "SELECT eID FROM Events " +
+                            "WHERE Name = @Name AND Date = @Date AND Site = @Site";
                         uint eID;
                         using (MySqlCommand command = new(getEIDQuery, conn))
                         {
@@ -242,8 +243,8 @@ namespace ChessBrowser
                                 parsedResult += "Event: " + reader["EventName"] + "\n";
                                 parsedResult += "Site: " + reader["Site"] + "\n";
                                 parsedResult += "Date: " + reader["Date"] + "\n";
-                                parsedResult += "White:" + reader["White"] + "\n";
-                                parsedResult += "Black: " + reader["Black"] + "\n";
+                                parsedResult += "White:" + reader["White"] + " (" + reader["WhiteElo"].ToString() + ")\n";
+                                parsedResult += "Black: " + reader["Black"] + " (" + reader["BlackElo"].ToString() + ")\n";
                                 parsedResult += "Result: " + reader["Result"];
                                 if (showMoves)
                                 {
