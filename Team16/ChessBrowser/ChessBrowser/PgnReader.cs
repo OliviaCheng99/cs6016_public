@@ -5,7 +5,7 @@ namespace ChessBrowser
 {
     public class PngReader
     {
-        
+
         private static readonly Regex tagPattern = new Regex(@"\[(\w+)\s+""(.+)""\]");
 
         // methods
@@ -22,8 +22,8 @@ namespace ChessBrowser
                 { "Event", (game, value) => game.EventName = value },
                 { "Site", (game, value) => game.Site = value },
                 { "Round", (game, value) => game.Round = value },
-                { "White", (game, value) => game.White = value },
-                { "Black", (game, value) => game.Black = value },
+                { "White", (game, value) => game.WhiteName = value },
+                { "Black", (game, value) => game.BlackName = value },
                 { "Result", (game, value) => game.Result = HandleResult(value) },
                 { "WhiteElo", (game, value) => game.WhiteElo = uint.Parse(value) },
                 { "BlackElo", (game, value) => game.BlackElo = uint.Parse(value) },
@@ -102,12 +102,13 @@ namespace ChessBrowser
         }
         static DateTime HandleDate(string date)
         {
-            DateTime res = new();
-            string format = "yyyy.MM.dd";
+            DateTime eventDate;
 
-            return date.Contains('?') ?
-                DateTime.ParseExact("0000-00-00", format, CultureInfo.InvariantCulture) :
-                DateTime.ParseExact(date, format, CultureInfo.InvariantCulture);
+            if (!DateTime.TryParseExact(date, "yyyy.MM.dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out eventDate))
+            {
+                eventDate = DateTime.MinValue;
+            }
+            return eventDate;
         }
 
     }

@@ -1,8 +1,10 @@
-﻿using Microsoft.Maui.Controls;
+﻿using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Maui.Controls;
 using MySqlConnector;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics.Tracing;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
@@ -28,13 +30,16 @@ namespace ChessBrowser
             // TODO:
             //       Load and parse the PGN file
             //       We recommend creating separate libraries to represent chess data and load the file
+            var games = PngReader.GetAllGames(PGNfilename);
+            //for (int i = 0; i < 5; ++i)
+            //{
+            //    Console.WriteLine(games[i].EventName);
+            //}
 
             // TODO:
             //       Use this to tell the GUI's progress bar how many total work steps there are
             //       For example, one iteration of your main upload loop could be one work step
-            //mainPage.SetNumWorkItems( ... );
-            var games = PngReader.GetAllGames(PGNfilename);
-
+            mainPage.SetNumWorkItems(games.Count);
 
             using (MySqlConnection conn = new MySqlConnection(connection))
             {
@@ -48,59 +53,87 @@ namespace ChessBrowser
 
                     foreach (Game game in games)
                     {
-                        var events = game.GetEvents();
-                        MySqlCommand command = new MySqlCommand(events.insertQuery, conn);
-                        command.Parameters.AddWithValue("@Name", events.Name);
-                        command.Parameters.AddWithValue("@Site", events.Site);
-                        command.Parameters.AddWithValue("@Date", events.Date);
-                        command.ExecuteNonQuery();
+                        // insert into table Events;
+                        string insertEventsQuery = "INSERT IGNORE INTO Events (Name, Site, Date) " +
+                            "VALUES (@Name, @Site, @Date)";
+                        //Console.WriteLine(insertEventsQuery);
 
-                        command = new MySqlCommand(events.getEIDQuery, conn);
-                        command.Parameters.AddWithValue("@Name", events.Name);
-                        command.Parameters.AddWithValue("@Site", events.Site);
-                        command.Parameters.AddWithValue("@Date", events.Date);
-                        var result = command.ExecuteScalar();
-                        var eID = Convert.ToUInt32(result);
+                        using (MySqlCommand command = new(insertEventsQuery, conn))
+                        {
+                            command.Parameters.AddWithValue("@Name", game.EventName);
+                            command.Parameters.AddWithValue("@Site", game.Site);
+                            command.Parameters.AddWithValue("@Date", game.EventDate);
+                            command.ExecuteNonQuery();
+                        }
 
+                        // get table Events column eID and this is used in inserting into table Games
+                        // UNIQUE KEY `Name` (`Name`,`Date`,`Site`)
+                        string getEIDQuery = "SELECT eID FROM Events WHERE Name = @Name AND Date = @Date AND Site = @Site";
+                        uint eID;
+                        using (MySqlCommand command = new(getEIDQuery, conn))
+                        {
+                            command.Parameters.AddWithValue("@Name", game.EventName);
+                            command.Parameters.AddWithValue("@Site", game.Site);
+                            command.Parameters.AddWithValue("@Date", game.EventDate);
+                            eID = Convert.ToUInt32(command.ExecuteScalar());
+                        }
 
-                        var bPlayers = game.GetBlackPlayers();
-                        command = new MySqlCommand(bPlayers.insertQuery, conn);
-                        command.Parameters.AddWithValue("@Name", bPlayers.Name);
-                        command.Parameters.AddWithValue("@Elo", bPlayers.Elo);
-                        command.ExecuteNonQuery();
+                        // insert into table Players and update the player elo to the greatest;
+                        // black first
+                        string insertBlackPlayerQuery = "INSERT INTO Players (Name, Elo) " +
+                            "VALUES (@BlackName, @BlackElo) ON DUPLICATE KEY UPDATE Elo= GREATEST(Elo,@BlackElo)";
+                        using (MySqlCommand command = new(insertBlackPlayerQuery, conn))
+                        {
+                            command.Parameters.AddWithValue("@BlackName", game.BlackName);
+                            command.Parameters.AddWithValue("@BlackElo", game.BlackElo);
+                            command.ExecuteNonQuery();
+                        }
+                        // get black player pID
+                        string blackPIdQuery = "SELECT pID FROM Players WHERE Name = @BlackPlayerName";
+                        uint blackPID;
+                        using (MySqlCommand command = new(blackPIdQuery, conn))
+                        {
+                            command.Parameters.AddWithValue("@BlackPlayerName", game.BlackName);
+                            blackPID = Convert.ToUInt32(command.ExecuteScalar());
+                        }
 
-                        command = new MySqlCommand(bPlayers.selectPIDQuery, conn);
-                        command.Parameters.AddWithValue("@Name", bPlayers.Name);
-                        result = command.ExecuteScalar();
-                        var pID = Convert.ToUInt32(result);
-                        bPlayers.pID = pID;
+                        // white player then
+                        string insertWhitePlayerQuery = "INSERT INTO Players (Name, Elo) " +
+                            "VALUES (@WhiteName, @WhiteElo) ON DUPLICATE KEY UPDATE Elo= GREATEST(Elo,@WhiteElo)";
+                        using (MySqlCommand command = new(insertWhitePlayerQuery, conn))
+                        {
+                            command.Parameters.AddWithValue("@WhiteName", game.WhiteName);
+                            command.Parameters.AddWithValue("@WhiteElo", game.WhiteElo);
+                            command.ExecuteNonQuery();
+                        }
+                        // get white player pID
+                        string whitePIdQuery = "SELECT pID FROM Players WHERE Name = @WhitePlayerName";
+                        uint whitePID;
+                        using (MySqlCommand command = new(whitePIdQuery, conn))
+                        {
+                            command.Parameters.AddWithValue("@WhitePlayerName", game.WhiteName);
+                            whitePID = Convert.ToUInt32(command.ExecuteScalar());
+                        }
 
-                        var wPlayers = game.GetWhitePlayers();
-                        command = new MySqlCommand(wPlayers.insertQuery, conn);
-                        command.Parameters.AddWithValue("@Name", wPlayers.Name);
-                        command.Parameters.AddWithValue("@Elo", wPlayers.Elo);
-                        command.ExecuteNonQuery();
+                        // insert into table Games;
+                        string insertGamesQuery = "INSERT IGNORE INTO Games " +
+                           "(Round, Result, Moves, BlackPlayer, WhitePlayer,eID) " +
+                           "VALUES (@Round, @Result, @Moves, @BlackPID, @WhitePID, @eID)";
+                        using (MySqlCommand command = new(insertGamesQuery, conn))
+                        {
+                            command.Parameters.AddWithValue("@Round", game.Round);
+                            command.Parameters.AddWithValue("@Result", game.Result);
+                            command.Parameters.AddWithValue("@Moves", game.Moves);
+                            command.Parameters.AddWithValue("@BlackPID", blackPID);
+                            command.Parameters.AddWithValue("@WhitePID", whitePID);
+                            command.Parameters.AddWithValue("@eID", eID);
+                            command.ExecuteNonQuery();
+                        }
 
-                        command = new MySqlCommand(wPlayers.selectPIDQuery, conn);
-                        command.Parameters.AddWithValue("@Name", wPlayers.Name);
-                        result = command.ExecuteScalar();
-                        pID = Convert.ToUInt32(result);
-                        wPlayers.pID = pID;
-
-                        var chessGame = game.GetGames(bPlayers, wPlayers, eID);
-                        command = new MySqlCommand(chessGame.insertQuery, conn);
-                        command.Parameters.AddWithValue("@Round", chessGame.Round);
-                        command.Parameters.AddWithValue("@Result", chessGame.Result);
-                        command.Parameters.AddWithValue("@Moves", chessGame.Moves);
-                        command.Parameters.AddWithValue("@BlackPlayer", chessGame.BlackPlayer);
-                        command.Parameters.AddWithValue("@WhitePlayer", chessGame.WhitePlayer);
-                        command.Parameters.AddWithValue("@eID", chessGame.eID);
-                        command.ExecuteNonQuery();
+                        // TODO:
+                        //       Use this inside a loop to tell the GUI that one work step has completed:
+                        await mainPage.NotifyWorkItemCompleted();
                     }
-
-                    // TODO:
-                    //       Use this inside a loop to tell the GUI that one work step has completed:
-                    await mainPage.NotifyWorkItemCompleted();
 
                 }
                 catch (Exception e)
@@ -108,9 +141,7 @@ namespace ChessBrowser
                     System.Diagnostics.Debug.WriteLine(e.Message);
                 }
             }
-
         }
-
 
         /// <summary>
         /// Queries the database for games that match all the given filters.
@@ -129,6 +160,7 @@ namespace ChessBrowser
           string winner, bool useDate, DateTime start, DateTime end, bool showMoves,
           MainPage mainPage)
         {
+            //Console.WriteLine(start.ToString("yyyy-MM-dd"));
             // This will build a connection string to your user's database on atr,
             // assuimg you've typed a user and password in the GUI
             string connection = mainPage.GetConnectionString();
@@ -140,123 +172,88 @@ namespace ChessBrowser
             // (see below return statement)
             int numRows = 0;
 
-            using (MySqlConnection conn = new MySqlConnection(connection))
+            using (MySqlConnection conn = new(connection))
             {
                 try
                 {
                     // Open a connection
                     conn.Open();
 
+                    // Dictionary to hold the parameters
+                    Dictionary<string, string> paraDict = new()
+                        {
+                            { "@WhitePlayerName", white },
+                            { "@BlackPlayerName", black },
+                            { "@OpeningMove", opening != null ? opening + "%" : null },
+                            { "@Result", winner },
+                            { "@StartDate", useDate ? start.ToString("yyyy-MM-dd") : null },
+                            { "@EndDate", useDate ? end.ToString("yyyy-MM-dd") : null }
+                        };
+
+                    // Dictionary to hold the corresponding SQL strings
+                    Dictionary<string, string> queryDict = new()
+                        {
+                            { "@WhitePlayerName", " AND WP.Name=@WhitePlayerName" },
+                            { "@BlackPlayerName", " AND BP.Name=@BlackPlayerName" },
+                            { "@OpeningMove", " AND G.Moves LIKE @OpeningMove"},
+                            { "@Result", " AND G.Result=@Result" },
+                            { "@StartDate", " AND E.Date>=@StartDate" },
+                            { "@EndDate", " AND E.Date<=@EndDate" }
+                         };
+
+                    // basic query
+                    StringBuilder query = new();
+                    string queryStr = "SELECT E.Name AS EventName, E.Site, E.Date, " +
+                        "WP.Name AS White, BP.Name AS Black, " +
+                        "WP.Elo AS WhiteElo, BP.Elo AS BlackElo, G.Result, G.Moves " +
+                        "FROM Events E INNER JOIN Games G ON E.eID = G.EID " +
+                        "INNER JOIN Players WP ON G.WhitePlayer = WP.pID " +
+                        "INNER JOIN Players BP ON G.BlackPlayer = BP.pID WHERE TRUE ";
+                    query.Append(queryStr);
+
                     // TODO: Generate and execute an SQL command
-                    string selectClause = @"
-                        SELECT
-                            Events.Name,
-                            Events.Site,
-                            Events.Date,
-                            Games.Result";
-
-                    if (showMoves)
+                    // Iterate over the parameters to update the query
+                    foreach (KeyValuePair<string, string> paraEntry in paraDict)
                     {
-                        selectClause += ", Games.Moves";
-                    }
-
-                    selectClause += @",
-                            WhitePlayers.Name AS White,
-                            WhitePlayers.Elo AS WhiteElo,
-                            BlackPlayers.Name AS Black,
-                            BlackPlayers.Elo AS BlackElo";
-
-                    string fromClause = @"
-                        FROM
-                            Team16ChessProject.Events
-                            JOIN Team16ChessProject.Games ON Team16ChessProject.Events.eID = Team16ChessProject.Games.eID
-                            JOIN Team16ChessProject.Players AS WhitePlayers ON Team16ChessProject.Games.WhitePlayer = WhitePlayers.pID
-                            JOIN Team16ChessProject.Players AS BlackPlayers ON Team16ChessProject.Games.BlackPlayer = BlackPlayers.pID";
-
-                    string whereClause = "";
-
-                    if (!string.IsNullOrEmpty(white))
-                    {
-                        whereClause += string.IsNullOrEmpty(whereClause) ? "" : " AND ";
-                        whereClause += " WhitePlayers.Name = @White";
-                    }
-
-                    if (!string.IsNullOrEmpty(black))
-                    {
-                        whereClause += string.IsNullOrEmpty(whereClause) ? "" : " AND ";
-                        whereClause += " BlackPlayers.Name = @Black";
-                    }
-
-                    if (!string.IsNullOrEmpty(opening))
-                    {
-                        whereClause += string.IsNullOrEmpty(whereClause) ? "" : " AND ";
-                        whereClause += " Moves LIKE @opening";
-                    }
-
-                    if (!string.IsNullOrEmpty(winner))
-                    {
-                        whereClause += string.IsNullOrEmpty(whereClause) ? "" : " AND ";
-                        whereClause += " Result = @winner";
-                    }
-
-                    if (useDate)
-                    {
-                        whereClause += string.IsNullOrEmpty(whereClause) ? "" : " AND ";
-                        whereClause += " Date BETWEEN @Start AND @End";
-                    }
-
-                    string sql = selectClause + Environment.NewLine + fromClause;
-                    if (!string.IsNullOrEmpty(whereClause))
-                    {
-                        sql += Environment.NewLine + "WHERE" + Environment.NewLine + whereClause;
-                    }
-
-                    using (MySqlCommand command = new MySqlCommand(sql, conn))
-                    {
-                        // Set parameter values based on the provided parameters
-                        if (!string.IsNullOrEmpty(white))
+                        if (paraEntry.Value != null)
                         {
-                            command.Parameters.AddWithValue("@White", white);
+                            //Console.WriteLine(queryDict[paraEntry.Key]);
+                            query.Append(queryDict[paraEntry.Key]);
                         }
+                    }
 
-                        if (!string.IsNullOrEmpty(black))
-                        {
-                            command.Parameters.AddWithValue("@Black", black);
-                        }
+                    using (MySqlCommand command = new(query.ToString(), conn))
+                    {
 
-                        if (!string.IsNullOrEmpty(opening))
+                        foreach (KeyValuePair<string, string> paraEntry in paraDict)
                         {
-                            command.Parameters.AddWithValue("@Opening", opening + "%");
-                        }
-
-                        if (!string.IsNullOrEmpty(winner))
-                        {
-                            command.Parameters.AddWithValue("@Winner", winner);
-                        }
-
-                        if (useDate)
-                        {
-                            command.Parameters.AddWithValue("@Start", start);
-                            command.Parameters.AddWithValue("@End", end);
+                            if (paraEntry.Value != null)
+                            {
+                                Console.WriteLine("\nhere in the command");
+                                Console.WriteLine(paraEntry.Key);
+                                Console.WriteLine(paraEntry.Value);
+                                command.Parameters.AddWithValue(paraEntry.Key, paraEntry.Value);
+                            }
                         }
 
                         using (MySqlDataReader reader = command.ExecuteReader())
                         {
+                            //Console.WriteLine("here in reader");
                             while (reader.Read())
                             {
-                                // Parse the results into the formatted string
-                                parsedResult += "Event: " + reader.GetString("Name") + "\n";
-                                parsedResult += "Site: " + reader.GetString("Site") + "\n";
-                                parsedResult += "Date: " + reader.GetDateTime("Date").ToString() + "\n";
-                                parsedResult += $"White: {reader.GetString("White")} ({reader.GetUInt32("WhiteElo")})\n";
-                                parsedResult += $"Black: {reader.GetString("Black")} ({reader.GetUInt32("BlackElo")})\n";
-                                parsedResult += "Result: " + reader.GetChar("Result") + "\n";
+                                numRows++;
+                                parsedResult += "Event: " + reader["EventName"] + "\n";
+                                parsedResult += "Site: " + reader["Site"] + "\n";
+                                parsedResult += "Date: " + reader["Date"] + "\n";
+                                parsedResult += "White:" + reader["White"] + "\n";
+                                parsedResult += "Black: " + reader["Black"] + "\n";
+                                parsedResult += "Result: " + reader["Result"];
                                 if (showMoves)
                                 {
-                                    parsedResult += "Moves: " + reader.GetString("Moves");
+                                    parsedResult += "\n" + "Moves: " + reader["Moves"];
                                 }
-                                parsedResult += "\n";
-                                numRows++;
+                                parsedResult += "\n\n";
+                                //Console.WriteLine(parsedResult);
                             }
                         }
                     }
@@ -266,9 +263,7 @@ namespace ChessBrowser
                     System.Diagnostics.Debug.WriteLine(e.Message);
                 }
             }
-
             return numRows + " results\n\n" + parsedResult;
         }
-
     }
 }
