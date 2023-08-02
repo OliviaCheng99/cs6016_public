@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using LMS.Models.LMSModels;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 // For more information on enabling MVC for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
 
@@ -108,32 +109,45 @@ namespace LMS.Controllers
         /// <returns>The JSON array</returns>
         public IActionResult GetAssignmentsInClass(string subject, int num, string season, int year, string uid)
         {
-            // Step 1: Get CatalogID using subject and num
-            var catalogId = db.Courses
-                              .Where(c => c.Department == subject && c.Number == num)
-                              .Select(c => c.CatalogId)
-                              .FirstOrDefault();
-
-            if (catalogId == 0)
-            {
-                return Json(new { error = "Course not found" });
-            }
-
-            // Step 2: Find a Class using CatalogID
-            var classId = db.Classes
-                            .Where(c => c.Listing == catalogId && c.Season == season && c.Year == year)
-                            .Select(c => c.ClassId)
-                            .FirstOrDefault();
-
-            if (classId == 0)
+            // Find the specific class using the provided parameters
+            var classInfo = db.Classes
+                              .Include(c => c.ListingNavigation) // Include Courses
+                              .FirstOrDefault(c => c.ListingNavigation.Department == subject
+                                                   && c.ListingNavigation.Number == num
+                                                   && c.Season == season
+                                                   && c.Year == year);
+            if (classInfo == null)
             {
                 return Json(new { error = "Class not found" });
             }
 
-            //
+            // Check if the student is enrolled in the class
+            var enrollment = db.Enrolleds.FirstOrDefault(e => e.Class == classInfo.ClassId && e.Student == uid);
+            if (enrollment == null)
+            {
+                return Json(new { error = "Student not enrolled in the class" });
+            }
+
+            // Retrieve the assignments for the class
+            var assignments = db.Assignments
+                                .Include(a => a.CategoryNavigation) // Include AssignmentCategories
+                                .Where(a => a.CategoryNavigation.InClass == classInfo.ClassId)
+                                .Select(a => new
+                                {
+                                    aname = a.Name,
+                                    cname = a.CategoryNavigation.Name,
+                                    due = a.Due,
+                                    score = db.Submissions
+                                              .Where(s => s.Assignment == a.AssignmentId && s.Student == uid)
+                                              .Select(s => (int?)s.Score) // Cast to nullable int
+                                              .FirstOrDefault()
+                                })
+                                .ToList();
 
             return Json(assignments);
         }
+
+
 
 
 
@@ -155,10 +169,78 @@ namespace LMS.Controllers
         /// <param name="contents">The text contents of the student's submission</param>
         /// <returns>A JSON object containing {success = true/false}</returns>
         public IActionResult SubmitAssignmentText(string subject, int num, string season, int year,
-          string category, string asgname, string uid, string contents)
-        {           
-            return Json(new { success = false });
+    string category, string asgname, string uid, string contents)
+        {
+            try
+            {
+                // Find the course using the subject and course number
+                var course = db.Courses.FirstOrDefault(c => c.Department == subject && c.Number == num);
+
+                if (course == null)
+                {
+                    return Json(new { success = false });
+                }
+
+                // Find the class using the season and year, and the course's CatalogID
+                var classInfo = db.Classes.FirstOrDefault(c => c.Season == season && c.Year == year && c.Listing == course.CatalogId);
+
+                if (classInfo == null)
+                {
+                    return Json(new { success = false });
+                }
+
+                // Find the assignment category using the class's ClassID and the provided category name
+                var assignmentCategory = db.AssignmentCategories.FirstOrDefault(ac => ac.InClass == classInfo.ClassId && ac.Name == category);
+
+                if (assignmentCategory == null)
+                {
+                    return Json(new { success = false });
+                }
+
+                // Finally, find the assignment using the category's CategoryID and the provided assignment name
+                var assignment = db.Assignments.FirstOrDefault(a => a.Category == assignmentCategory.CategoryId && a.Name == asgname);
+
+
+                // Check if assignment exists
+                if (assignment == null)
+                {
+                    return Json(new { success = false, message = "Assignment not found" });
+                }
+
+                // Find existing submission or create new one
+                var submission = db.Submissions
+                    .Where(s => s.Assignment == assignment.AssignmentId && s.Student == uid)
+                    .FirstOrDefault();
+
+                if (submission == null)
+                {
+                    submission = new Submission
+                    {
+                        Assignment = assignment.AssignmentId,
+                        Student = uid,
+                        Score = 0, // Initially 0, until graded by Professor
+                        SubmissionContents = contents,
+                        Time = DateTime.Now // Current time
+                    };
+                    db.Submissions.Add(submission);
+                }
+                else
+                {
+                    submission.SubmissionContents = contents;
+                    submission.Time = DateTime.Now; // Update time
+                }
+
+                db.SaveChanges(); 
+
+                return Json(new { success = true });
+            }
+            catch (Exception ex)
+            {
+                // Handle any exceptions and return a failure response
+                return Json(new { success = false, message = ex.Message });
+            }
         }
+
 
 
         /// <summary>
@@ -172,9 +254,55 @@ namespace LMS.Controllers
         /// <returns>A JSON object containing {success = {true/false}. 
         /// false if the student is already enrolled in the class, true otherwise.</returns>
         public IActionResult Enroll(string subject, int num, string season, int year, string uid)
-        {          
-            return Json(new { success = false});
+        {
+            // Find the course using the subject and course number
+            var course = db.Courses.FirstOrDefault(c => c.Department == subject && c.Number == num);
+
+            if (course == null)
+            {
+                return Json(new { success = false });
+            }
+
+            // Find the class using the season and year, and the course's CatalogID
+            var classInfo = db.Classes.FirstOrDefault(c => c.Season == season && c.Year == year && c.Listing == course.CatalogId);
+
+            if (classInfo == null)
+            {
+                return Json(new { success = false });
+            }
+
+            // Find the student using the uid
+            var student = db.Students.FirstOrDefault(s => s.UId == uid);
+
+            if (student == null)
+            {
+                return Json(new { success = false });
+            }
+
+            // Check if the student is already enrolled in the class
+            var existingEnrollment = db.Enrolleds.FirstOrDefault(e => e.Class == classInfo.ClassId && e.Student == student.UId);
+
+            if (existingEnrollment != null)
+            {
+                // Student is already enrolled
+                return Json(new { success = false });
+            }
+
+            // Create a new enrollment
+            var enrollment = new Enrolled
+            {
+                Student = uid,
+                Class = classInfo.ClassId,
+                Grade = "N/A" // or some default value for Grade
+            };
+
+            // Add the new enrollment to the database context
+            db.Enrolleds.Add(enrollment);
+            db.SaveChanges();
+
+            return Json(new { success = true });
         }
+
 
 
 
@@ -190,10 +318,51 @@ namespace LMS.Controllers
         /// <param name="uid">The uid of the student</param>
         /// <returns>A JSON object containing a single field called "gpa" with the number value</returns>
         public IActionResult GetGPA(string uid)
-        {            
-            return Json(null);
+        {
+            double totalPoints = 0.0;
+            int totalClasses = 0;
+
+            // Query the enrolled classes and grades for the specified student
+            var enrollments = db.Enrolleds.Where(e => e.Student == uid);
+
+            // Iterate through the enrollments to calculate total points
+            foreach (var enrollment in enrollments)
+            {
+                var grade = enrollment.Grade;
+
+                // Determine the point value for the letter grade
+                double pointValue = grade switch
+                {
+                    "A" => 4.0,
+                    "A-" => 3.7,
+                    "B+" => 3.3,
+                    "B" => 3.0,
+                    "B-" => 2.7,
+                    "C+" => 2.3,
+                    "C" => 2.0,
+                    "C-" => 1.7,
+                    "D+" => 1.3,
+                    "D" => 1.0,
+                    "D-" => 0.7,
+                    "E" => 0.0,
+                    "--" => -1.0, // Special case to skip classes without a grade
+                    _ => throw new InvalidOperationException("Unknown grade")
+                };
+
+                if (pointValue >= 0)
+                {
+                    totalPoints += pointValue;
+                    totalClasses++;
+                }
+            }
+
+            // Calculate the GPA
+            double gpa = totalClasses > 0 ? totalPoints / totalClasses : 0.0;
+
+            return Json(new { gpa = gpa });
         }
-                
+
+
         /*******End code to modify********/
 
     }

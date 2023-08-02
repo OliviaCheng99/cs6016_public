@@ -174,8 +174,24 @@ namespace LMS_CustomIdentity.Controllers
         /// <returns>The JSON array</returns>
         public IActionResult GetAssignmentsInCategory(string subject, int num, string season, int year, string category)
         {
-            return Json(null);
+            var assignments = (from a in db.Assignments
+                               join ac in db.AssignmentCategories on a.Category equals ac.CategoryId
+                               join c in db.Classes on ac.InClass equals c.ClassId
+                               join co in db.Courses on c.Listing equals co.CatalogId
+                               join d in db.Departments on co.Department equals d.Subject
+                               where d.Subject == subject && co.Number == num && c.Season == season && c.Year == year
+                               && (category == null || ac.Name == category)
+                               select new
+                               {
+                                   aname = a.Name,
+                                   cname = ac.Name,
+                                   due = a.Due,
+                                   submissions = db.Submissions.Count(s => s.Assignment == a.AssignmentId)
+                               }).ToList();
+
+            return Json(assignments);
         }
+
 
 
         /// <summary>
@@ -192,8 +208,20 @@ namespace LMS_CustomIdentity.Controllers
         /// <returns>The JSON array</returns>
         public IActionResult GetAssignmentCategories(string subject, int num, string season, int year)
         {
-            return Json(null);
+            var categories = (from ac in db.AssignmentCategories
+                              join c in db.Classes on ac.InClass equals c.ClassId
+                              join co in db.Courses on c.Listing equals co.CatalogId
+                              join d in db.Departments on co.Department equals d.Subject
+                              where d.Subject == subject && co.Number == num && c.Season == season && c.Year == year
+                              select new
+                              {
+                                  name = ac.Name,
+                                  weight = ac.Weight
+                              }).ToList();
+
+            return Json(categories);
         }
+
 
         /// <summary>
         /// Creates a new assignment category for the specified class.
@@ -224,10 +252,40 @@ namespace LMS_CustomIdentity.Controllers
         /// <param name="asgdue">The due DateTime for the new assignment</param>
         /// <param name="asgcontents">The contents of the new assignment</param>
         /// <returns>A JSON object containing success = true/false</returns>
-        public IActionResult CreateAssignment(string subject, int num, string season, int year, string category, string asgname, int asgpoints, DateTime asgdue, string asgcontents)
-        {
-            return Json(new { success = false });
-        }
+        //public IActionResult CreateAssignmentCategory(string subject, int num, string season, int year, string category, int catweight)
+        //{
+        //    // Find the class ID based on the provided parameters
+        //    var classId = (from c in db.Classes
+        //                   join co in db.Courses on c.Listing equals co.CatalogId
+        //                   join d in db.Departments on co.Department equals d.Subject
+        //                   where d.Subject == subject && co.Number == num && c.Season == season && c.Year == year
+        //                   select c.ClassId).FirstOrDefault();
+
+        //    if (classId == null)
+        //    {
+        //        return Json(new { success = false });
+        //    }
+
+        //    // Check if the category already exists for the class
+        //    var existingCategory = db.AssignmentCategories.FirstOrDefault(ac => ac.InClass == classId && ac.Name == category);
+        //    if (existingCategory != null)
+        //    {
+        //        return Json(new { success = false });
+        //    }
+
+        //    // Create new category
+        //    var newCategory = new AssignmentCategory
+        //    {
+        //        Name = category,
+        //        Weight = (uint)catweight,
+        //        InClass = classId
+        //    };
+        //    db.AssignmentCategories.Add(newCategory);
+        //    db.SaveChanges();
+
+        //    return Json(new { success = true });
+        //}
+
 
 
         /// <summary>

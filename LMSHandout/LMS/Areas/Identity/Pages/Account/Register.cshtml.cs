@@ -196,26 +196,27 @@ namespace LMS.Areas.Identity.Pages.Account
         {
             // Generate a unique uID starting with 'u' followed by 7 digits
             // Find the maximum uID from all tables and increment by one
-            string uid;
-            int maxId = new List<int>
+            string maxId = new List<String>
             {
-                db.Students.Max(s => int.Parse(s.UId.Substring(1))),
-                db.Professors.Max(p => int.Parse(p.UId.Substring(1))),
-                db.Administrators.Max(a => int.Parse(a.UId.Substring(1)))
+                db.Students.Max(s => s.UId),
+                db.Professors.Max(s => s.UId),
+                db.Administrators.Max(s => s.UId)
             }.Max();
-            uid = "u" + (maxId + 1).ToString("D7"); // Padded with zeros to ensure 7 digits
+            int number = int.Parse(maxId[1..]); // Extract the numerical part and convert to integer
+            number++;
+            string uid = "u" + number.ToString("D7"); // Format it back with leading zeros
 
 
             // Create the user object based on the role
             if (role == "Student")
             {
-                var student = new Students
+                var student = new Student
                 {
                     UId = uid,
-                    FirstName = firstName,
-                    LastName = lastName,
-                    Dob = DOB,
-                    Department = departmentAbbrev
+                    FName = firstName,
+                    LName = lastName,
+                    Dob = DateOnly.FromDateTime(DOB),
+                    Major = departmentAbbrev
                 };
                 db.Students.Add(student);
             }

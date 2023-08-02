@@ -1,4 +1,6 @@
-﻿namespace ChessBrowser
+﻿using System;
+
+namespace ChessBrowser
 {
     public class Game
     {
