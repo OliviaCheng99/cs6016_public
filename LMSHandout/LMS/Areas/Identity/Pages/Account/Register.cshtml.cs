@@ -206,7 +206,6 @@ namespace LMS.Areas.Identity.Pages.Account
             number++;
             string uid = "u" + number.ToString("D7"); // Format it back with leading zeros
 
-
             // Create the user object based on the role
             if (role == "Student")
             {

@@ -236,8 +236,41 @@ namespace LMS_CustomIdentity.Controllers
         /// <returns>A JSON object containing {success = true/false} </returns>
         public IActionResult CreateAssignmentCategory(string subject, int num, string season, int year, string category, int catweight)
         {
-            return Json(new { success = false });
+            var classId = (from c in db.Classes
+                           join co in db.Courses on c.Listing equals co.CatalogId
+                           join d in db.Departments on co.Department equals d.Subject
+                           where d.Subject == subject && co.Number == num && c.Season == season && c.Year == year
+                           select c.ClassId).FirstOrDefault();
+
+            if (classId == 0) // If no matching class is found, return success = false
+            {
+                return Json(new { success = false });
+            }
+
+            var existingCategory = db.AssignmentCategories
+                .Where(ac => ac.InClass == classId && ac.Name == category)
+                .FirstOrDefault();
+
+            if (existingCategory != null) // If a category with the given name already exists, return success = false
+            {
+                return Json(new { success = false });
+            }
+
+            // Create the new category
+            var newCategory = new AssignmentCategory
+            {
+                InClass = classId,
+                Name = category,
+                Weight = (uint)catweight
+            };
+
+            db.AssignmentCategories.Add(newCategory);
+            db.SaveChanges();
+
+            return Json(new { success = true });
         }
+
+
 
         /// <summary>
         /// Creates a new assignment for the given class and category.
@@ -252,39 +285,53 @@ namespace LMS_CustomIdentity.Controllers
         /// <param name="asgdue">The due DateTime for the new assignment</param>
         /// <param name="asgcontents">The contents of the new assignment</param>
         /// <returns>A JSON object containing success = true/false</returns>
-        //public IActionResult CreateAssignmentCategory(string subject, int num, string season, int year, string category, int catweight)
-        //{
-        //    // Find the class ID based on the provided parameters
-        //    var classId = (from c in db.Classes
-        //                   join co in db.Courses on c.Listing equals co.CatalogId
-        //                   join d in db.Departments on co.Department equals d.Subject
-        //                   where d.Subject == subject && co.Number == num && c.Season == season && c.Year == year
-        //                   select c.ClassId).FirstOrDefault();
+        public IActionResult CreateAssignment(string subject, int num, string season, int year, string category, string asgname, int asgpoints, DateTime asgdue, string asgcontents)
+        {
+            var classId = (from c in db.Classes
+                           join co in db.Courses on c.Listing equals co.CatalogId
+                           join d in db.Departments on co.Department equals d.Subject
+                           where d.Subject == subject && co.Number == num && c.Season == season && c.Year == year
+                           select c.ClassId).FirstOrDefault();
 
-        //    if (classId == null)
-        //    {
-        //        return Json(new { success = false });
-        //    }
+            if (classId == 0) // If no matching class is found, return success = false
+            {
+                return Json(new { success = false });
+            }
 
-        //    // Check if the category already exists for the class
-        //    var existingCategory = db.AssignmentCategories.FirstOrDefault(ac => ac.InClass == classId && ac.Name == category);
-        //    if (existingCategory != null)
-        //    {
-        //        return Json(new { success = false });
-        //    }
+            var categoryId = (from ac in db.AssignmentCategories
+                              where ac.InClass == classId && ac.Name == category
+                              select ac.CategoryId).FirstOrDefault();
 
-        //    // Create new category
-        //    var newCategory = new AssignmentCategory
-        //    {
-        //        Name = category,
-        //        Weight = (uint)catweight,
-        //        InClass = classId
-        //    };
-        //    db.AssignmentCategories.Add(newCategory);
-        //    db.SaveChanges();
+            if (categoryId == 0) // If no matching category is found, return success = false
+            {
+                return Json(new { success = false });
+            }
 
-        //    return Json(new { success = true });
-        //}
+            var existingAssignment = db.Assignments
+                .Where(a => a.Category == categoryId && a.Name == asgname)
+                .FirstOrDefault();
+
+            if (existingAssignment != null) // If an assignment with the given name already exists, return success = false
+            {
+                return Json(new { success = false });
+            }
+
+            // Create the new assignment
+            var newAssignment = new Assignment
+            {
+                Category = categoryId,
+                Name = asgname,
+                MaxPoints = (uint)asgpoints,
+                Due = asgdue,
+                Contents = asgcontents
+            };
+
+            db.Assignments.Add(newAssignment);
+            db.SaveChanges();
+
+            return Json(new { success = true });
+        }
+
 
 
 
@@ -307,8 +354,35 @@ namespace LMS_CustomIdentity.Controllers
         /// <returns>The JSON array</returns>
         public IActionResult GetSubmissionsToAssignment(string subject, int num, string season, int year, string category, string asgname)
         {
-            return Json(null);
+            var assignmentId = (from a in db.Assignments
+                                join ac in db.AssignmentCategories on a.Category equals ac.CategoryId
+                                join c in db.Classes on ac.InClass equals c.ClassId
+                                join co in db.Courses on c.Listing equals co.CatalogId
+                                join d in db.Departments on co.Department equals d.Subject
+                                where d.Subject == subject && co.Number == num && c.Season == season && c.Year == year && ac.Name == category && a.Name == asgname
+                                select a.AssignmentId).FirstOrDefault();
+
+            if (assignmentId == 0) // If no matching assignment is found
+            {
+                return Json(new { success = false });
+            }
+
+            var submissions = (from s in db.Submissions
+                               join a in db.Assignments on s.Assignment equals a.AssignmentId
+                               join u in db.Students on s.Student equals u.UId
+                               where a.AssignmentId == assignmentId
+                               select new
+                               {
+                                   fname = u.FName,
+                                   lname = u.LName,
+                                   uid = u.UId,
+                                   time = s.Time,
+                                   score = s.Score
+                               }).ToList();
+
+            return Json(submissions);
         }
+
 
 
         /// <summary>
@@ -325,8 +399,34 @@ namespace LMS_CustomIdentity.Controllers
         /// <returns>A JSON object containing success = true/false</returns>
         public IActionResult GradeSubmission(string subject, int num, string season, int year, string category, string asgname, string uid, int score)
         {
-            return Json(new { success = false });
+            var assignmentId = (from a in db.Assignments
+                                join ac in db.AssignmentCategories on a.Category equals ac.CategoryId
+                                join c in db.Classes on ac.InClass equals c.ClassId
+                                join co in db.Courses on c.Listing equals co.CatalogId
+                                join d in db.Departments on co.Department equals d.Subject
+                                where d.Subject == subject && co.Number == num && c.Season == season && c.Year == year && ac.Name == category && a.Name == asgname
+                                select a.AssignmentId).FirstOrDefault();
+
+            if (assignmentId == 0) // If no matching assignment is found, return success = false
+            {
+                return Json(new { success = false });
+            }
+
+            var submission = db.Submissions
+                .Where(s => s.Assignment == assignmentId && s.Student == uid)
+                .FirstOrDefault();
+
+            if (submission == null) // If no matching submission is found, return success = false
+            {
+                return Json(new { success = false });
+            }
+
+            submission.Score = (uint)score; // Update the score
+            db.SaveChanges();
+
+            return Json(new { success = true });
         }
+
 
 
         /// <summary>
@@ -341,12 +441,26 @@ namespace LMS_CustomIdentity.Controllers
         /// <param name="uid">The professor's uid</param>
         /// <returns>The JSON array</returns>
         public IActionResult GetMyClasses(string uid)
-        {            
-            return Json(null);
+        {
+            var classes = (from c in db.Classes
+                           join co in db.Courses on c.Listing equals co.CatalogId
+                           join p in db.Professors on c.TaughtBy equals p.UId
+                           where p.UId == uid
+                           select new
+                           {
+                               subject = co.Department,
+                               number = co.Number,
+                               name = co.Name,
+                               season = c.Season,
+                               year = c.Year
+                           }).ToList();
+
+            return Json(classes);
         }
 
 
-        
+
+
         /*******End code to modify********/
     }
 }
