@@ -146,10 +146,10 @@ namespace LMS.Controllers
             // Class.Listing = Course.CatalogId
             uint listing = course.CatalogId;
             var existingClass = db.Classes.FirstOrDefault(c => c.Location == location &&
-                                                               c.StartTime.CompareTo(end) <= 0 &&
-                                                               c.EndTime.CompareTo(start) >= 0 &&
-                                                               c.Year == year &&
-                                                               c.Season == season);
+                                                   c.StartTime <= TimeOnly.FromTimeSpan(start.TimeOfDay) &&
+                                                   c.EndTime >= TimeOnly.FromTimeSpan(end.TimeOfDay) &&
+                                                   c.Year == year &&
+                                                   c.Season == season);
 
             var duplicateClassOffering = db.Classes.FirstOrDefault(c => c.Year == year &&
                                                                         c.Season == season &&

@@ -52,7 +52,7 @@ namespace LMS.Controllers
             var catalog = db.Departments
                             .Select(d => new
                             {
-                                subject = d.Courses.Select(c => c.Department).FirstOrDefault(),
+                                subject = d.Subject,
                                 dname = d.Name,
                                 courses = d.Courses.Select(c => new
                                 {

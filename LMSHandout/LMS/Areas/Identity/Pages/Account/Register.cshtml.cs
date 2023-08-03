@@ -221,24 +221,24 @@ namespace LMS.Areas.Identity.Pages.Account
             }
             else if (role == "Professor")
             {
-                var professor = new Professors
+                var professor = new Professor
                 {
                     UId = uid,
-                    FirstName = firstName,
-                    LastName = lastName,
-                    Dob = DOB,
-                    Department = departmentAbbrev
+                    FName = firstName,
+                    LName = lastName,
+                    Dob = DateOnly.FromDateTime(DOB),
+                    WorksIn = departmentAbbrev
                 };
                 db.Professors.Add(professor);
             }
             else if (role == "Administrator")
             {
-                var admin = new Administrators
+                var admin = new Administrator
                 {
                     UId = uid,
-                    FirstName = firstName,
-                    LastName = lastName,
-                    Dob = DOB,
+                    FName = firstName,
+                    LName = lastName,
+                    Dob = DateOnly.FromDateTime(DOB),
                 };
                 db.Administrators.Add(admin);
             }

@@ -21,6 +21,8 @@ namespace LMSControllerTests
             CommonController ctrl = new CommonController(MakeTinyDB());
 
             var allDepts = ctrl.GetDepartments() as JsonResult;
+            Assert.NotNull(allDepts);
+            Assert.NotNull(allDepts.Value);
 
             dynamic x = allDepts.Value;
 
@@ -67,8 +69,6 @@ namespace LMSControllerTests
 
             // Adding an assignment
             db.Assignments.Add(new Assignment { AssignmentId = 1, Category = 1, Name = "HW1", MaxPoints = 100, Due = DateTime.Now });
-
-            // TODO: You can continue to add more objects as required for your tests
 
             db.SaveChanges();
 

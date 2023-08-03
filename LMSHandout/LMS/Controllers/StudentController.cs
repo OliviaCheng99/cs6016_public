@@ -293,7 +293,7 @@ namespace LMS.Controllers
             {
                 Student = uid,
                 Class = classInfo.ClassId,
-                Grade = "N/A" // or some default value for Grade
+                Grade = "--"
             };
 
             // Add the new enrollment to the database context
